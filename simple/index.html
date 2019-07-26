@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title></title>
+  <style>
+    .grid {
+      display: grid;
+      grid-template-columns: min-content min-content;
+      grid-column-gap: 20px;
+      grid-row-gap: 10px;
+    }
+    .grid > * {
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <form>
+    <button type="button" onclick="onReadButtonClick()">Connect</button>
+    <div class="grid">
+      <label for="workOrderId">Work Order Number</label>
+      <input value="123456" name="workOrderId" id="workOrderId" type="number"/>
+      <label for="partId">Part</label>
+      <input value="10-1000-10000" name="partId" id="partId" type="text"/>
+      <label for="statusColor">Status Color</label>
+      <input value="#ff0000" name="statusColor" id="statusColor" type="color"/>
+      <label for="requiredByDate">Required By Date</label>
+      <input value="2019-07-25" name="requiredByDate" id="requiredByDate" type="date"/>
+    </div>
+    <div class="buttons">
+      <button type="button" id="writeButton" onclick="onWriteButtonClick()">Write</button>
+      <button type="button" id="resetButton" onclick="onResetButtonClick()">Reset</button>
+    </div>
+  </form>
+  <script>
+    const SERVICE = '0000ffe0-0000-1000-8000-00805f9b34fb';
+    const CHARACTERISTIC = '0000ffe1-0000-1000-8000-00805f9b34fb';
+    const DESCRIPTOR = "00002901-0000-1000-8000-00805f9b34fb";
+
+    function getValues() {
+      // 0
+      const value = new Uint8Array(20);
+      let i = 0;
+      value[i++] = "W".charCodeAt(0);
+
+      // 1
+      let workOrderId = document.getElementById('workOrderId').value;
+      workOrderId = ('0'.repeat(6) + workOrderId).slice(-6);
+      for (let j = 0; j < 6; j+=2) {
+        value[i] += parseInt(workOrderId[j], 10) << 4;
+        value[i] += parseInt(workOrderId[j + 1], 10);
+        i++;
+      }
+      // 4
+      const color = hexToRgb(document.getElementById('statusColor').value);
+      value.set(color, i);
+      i+=3;
+      // 7
+
+      const requiredByDate = new Date(document.getElementById('requiredByDate').value);
+      let date = 0;
+      date += (requiredByDate.getFullYear() - 2000);
+      date += ((requiredByDate.getMonth() + 1) << 6);
+      date += (requiredByDate.getDate() << 11);
+      value[i++] = (date >> 8) & 0xFF;
+      value[i++] = date & 0xFF;
+
+      const partId = document.getElementById('partId').value;
+      value.set(Array.from(partId, v => v.charCodeAt(0)).slice(0, 11), i++);
+      return value;
+    }
+
+    function hexToRgb(hex) {
+      if (hex[0] == '#') hex = hex.substr(1);
+      var bigint = parseInt(hex, 16);
+      var r = (bigint >> 16) & 255;
+      var g = (bigint >> 8) & 255;
+      var b = bigint & 255;
+    
+      return [r, g, b];
+    }
+    
+    var characteristic;
+    
+    function onReadButtonClick() {
+      console.log('Requesting any Bluetooth Device...');
+      navigator.bluetooth.requestDevice({
+       // filters: [...] <- Prefer filters to save energy & show relevant devices.
+          acceptAllDevices: true,
+          optionalServices: [SERVICE]})
+      .then(device => {
+        console.log('Connecting to GATT Server...');
+        return device.gatt.connect();
+      })
+      .then(server => {
+        console.log(server);
+        console.log('Getting Service...');
+        return server.getPrimaryService(SERVICE);
+      })
+      .then(service => {
+        console.log('Getting Characteristic...');
+        return service.getCharacteristic(CHARACTERISTIC);
+      })
+      .then(_characteristic => {
+        characteristic = _characteristic;
+      })
+      .catch(error => {
+        console.log('Argh! ' + error);
+      });
+    }
+    
+    function onWriteButtonClick() {
+      const value = getValues();
+      test(value);
+      characteristic.writeValue(value)
+        .then(_ => {
+          console.log('Value set.');
+        })
+        .catch(error => {
+          console.log('Argh! ' + error);
+        });
+    }
+    
+    function onResetButtonClick() {
+      characteristic.writeValue(new Uint8Array(20))
+        .then(_ => {
+          console.log('Value set.');
+        })
+        .catch(error => {
+          console.log('Argh! ' + error);
+        });
+    }
+    
+    function test(buf) {
+      let i = 0;
+      let text = '';
+      text += String.fromCharCode(buf[i++]);
+      for (let j = 0; j < 3; j++) {
+        const n = buf[i++];
+        text += n >> 4;
+        text += n & 0x0f;
+      }
+      console.log(text);
+    
+      // led
+      let [r, g, b] = buf.slice(i, i += 3);
+      console.log(`${r}, ${g}, ${b}`);
+    
+      // date [dddddmmmmmyyyyyy];
+      text = '';
+      let n = 0;
+      n += (buf[i++] << 8);
+      n += buf[i++];
+      // y
+      text += ((n & 0x3F) + 2000);
+      n = n >> 6;
+      text += '/';
+      text += (n & 0x1F);
+      n = n >> 5;
+      text += '/';
+      text += (n & 0x1F);
+      console.log(text);
+    
+      text = Array.from(buf.slice(i), v => String.fromCharCode(v)).join('');
+      console.log(text);
+    }
+  </script>
+</body>
+</html>
