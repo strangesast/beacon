@@ -40,9 +40,9 @@ void update(Stream &stream) {
   char piece[4];
   for (int j = 0; j < 3; j++) {
     int i = stream.read();
-    itoa(i & 0x0f, piece, 10);
-    strcat(text, piece);
     itoa(i >> 4, piece, 10);
+    strcat(text, piece);
+    itoa(i & 0x0F, piece, 10);
     strcat(text, piece);
   }
   u8x8.draw2x2String((8 - strlen(text)) / 2, 1, text);
